@@ -1,13 +1,24 @@
 import mido
 import sys
 import time
+import random
 from PyQt5.QtWidgets import  QApplication, QLabel, QWidget, QPushButton, QVBoxLayout, QStackedLayout
 from PyQt5.QtGui import QPalette, QColor, QIcon, QPixmap
 from PyQt5.QtCore import QObject, QThreadPool, QRunnable, Qt, pyqtSignal, pyqtSlot
 
 NOT_IN_SCALE = -10000
 
+# Just for testing/reading/displaying purposes
 NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
+
+def generate_complete_notes():
+    white_notes = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+    complete_notes = []
+    for note in white_notes:
+        complete_notes.extend((note, note + '#', note + 'b'))
+    return complete_notes
+
+COMPLETE_NOTES = generate_complete_notes()
 
 NOTE_JUMPS = [2, 2, 1, 2, 2, 2, 1]
 REV_NOTE_JUMPS = NOTE_JUMPS[::-1]
@@ -55,24 +66,71 @@ def convert_msg_to_note_num(msg):
 def convert_note_num_to_note(note_num):
     return NOTES[note_num % 12] + str(note_num // 12 - 1)
 
-def line_number_from_note(note, key='C'):
-    if (key == 'C'):
+def line_number_from_note_treble(note, key='C'):
+    if (key.find('C') != -1):
         return note_number_in_scale_from_semitones(note - 60) - 2
-    if (key == 'D'):
+    if (key.find('D') != -1):
         return note_number_in_scale_from_semitones(note - 60) - 1
-    if (key == 'E'):
+    if (key.find('E') != -1):
         return note_number_in_scale_from_semitones(note - 60)
-    if (key == 'F'):
+    if (key.find('F') != -1):
         return note_number_in_scale_from_semitones(note - 60) + 1
-    if (key == 'G'):
+    if (key.find('G') != -1):
         return note_number_in_scale_from_semitones(note - 60) + 2
-    if (key == 'A'):
+    if (key.find('A') != -1):
         return note_number_in_scale_from_semitones(note - 60) + 3
-    if (key == 'B'):
+    if (key.find('B') != -1):
         return note_number_in_scale_from_semitones(note - 60) + 4
+
+
 
 class NoteSignal(QObject):
     note_recieved = pyqtSignal(object)
+    note_generated = pyqtSignal(object)
+
+class GenerateNoteWorker(QRunnable):
+    curr_note = None
+    prev_note = None
+    
+    def __init__(self, key, difficulty):
+        super(GenerateNoteWorker, self).__init__()
+        self.signal = NoteSignal()
+        self.key = key
+        self.difficulty = difficulty
+    
+    def resetNote(self):
+        self.curr_note = None
+
+    def setKey(self, key):
+        self.key = key
+    
+    def setDifficulty(self, difficulty):
+        self.difficulty = difficulty
+
+    def generateNote(self):
+        min_note = None
+        max_note = None
+        if (self.key.find('C') != -1):
+            if (self.difficulty == "easy"):
+                min_note = 64
+                max_note = 77
+
+        generated_note = None
+        while(generated_note == None or generated_note == self.prev_note or note_number_in_scale_from_semitones(generated_note) == NOT_IN_SCALE):
+            generated_note = random.randrange(min_note, max_note)
+        self.prev_note = generated_note
+        return generated_note
+            
+
+    @pyqtSlot()
+    def run(self): 
+        while(True):
+            while(self.curr_note == None):
+                time.sleep(.5)
+                self.curr_note = self.generateNote()
+                self.signal.note_generated.emit(
+                    line_number_from_note_treble(self.curr_note, self.key))
+            time.sleep(.1)
 
 class MidiWorker(QRunnable):
 
@@ -81,6 +139,7 @@ class MidiWorker(QRunnable):
         self.inport = mido.open_input('MPK Mini Mk II')
         self.signal = NoteSignal()
         self.key = 'C'
+        self.firstTime = True
 
     def update_scale(self, key):
         self.key = key
@@ -95,7 +154,7 @@ class MidiWorker(QRunnable):
                     _ = str(msg).index("note_on")
                     # This throws exception if a non standard midi note is played.
                     self.signal.note_recieved.emit(
-                        line_number_from_note(convert_msg_to_note_num(msg), self.key))
+                        line_number_from_note_treble(convert_msg_to_note_num(msg), self.key))
                 except:
                     pass
             time.sleep(.1)

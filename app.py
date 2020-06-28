@@ -1,12 +1,11 @@
 import sys
 from PyQt5.QtWidgets import  QApplication, QLabel, QWidget, QPushButton, QVBoxLayout, QStackedLayout
-from PyQt5.QtGui import QPalette, QColor, QIcon, QPixmap
-from PyQt5.QtCore import QObject, QThreadPool, QRunnable, Qt, pyqtSignal, pyqtSlot
-from logic import MidiWorker
+from PyQt5.QtGui import QPalette, QColor, QIcon, QPixmap, QColor
+from PyQt5.QtCore import QObject, QThreadPool, QRunnable, Qt, pyqtSignal, pyqtSlot, QTimer
+from logic import MidiWorker, GenerateNoteWorker
 
 WIDTH = 720
 HEIGHT = 360
-
 
 def dark_theme(qApp):
     qApp.setStyle("Fusion")
@@ -38,13 +37,38 @@ class QuarterNote(QLabel):
     def __init__(self, parent):
         super(QuarterNote, self).__init__(parent)
         self.pix = QPixmap('./quarter_note.png').scaledToHeight(214)
-        self.setPixmap(self.pix)
+        self.red_pix = QPixmap('./quarter_note_red.png').scaledToHeight(214)
+        self.green_pix = QPixmap('./quarter_note_green.png').scaledToHeight(214)
 
+        self.changeColor(QColor("black"))
+       
+       
         self.upside_pix = QPixmap('./quarter_note_upside.png').scaledToHeight(214)
+        self.upside_red_pix = QPixmap('./quarter_note_upside_red.png').scaledToHeight(214)
+        self.upside_green_pix = QPixmap('./quarter_note_upside_green.png').scaledToHeight(214)
 
         self.ledger_lines = self.initLedgerLines(parent)  
         self.hideLedgerLines()
     
+    
+    def changeColor(self, color="black"):
+        if(self.is_curr_pix_normal):
+            if (color == "red"):
+                self.setPixmap(self.red_pix)
+            elif (color == "green"):
+                self.setPixmap(self.green_pix)
+            else:
+                self.setPixmap(self.pix)
+        else:   
+            if (color == "red"):
+                self.setPixmap(self.upside_red_pix)
+            elif (color == "green"):
+                self.setPixmap(self.upside_green_pix)
+            else:
+                self.setPixmap(self.upside_pix)
+
+      
+
     def hideLedgerLines(self):
         for ledger in self.ledger_lines:
             ledger.hide()
@@ -107,7 +131,7 @@ class MainWindow(QWidget):
         layout.addWidget(self.treble_clef_label)
         
         self.quarter_note_label = QuarterNote(self.treble_clef_label)
-        self.quarter_note_label.move(170, 143)
+        self.quarter_note_label.move(170, -1000)
 
         layout.setContentsMargins(200, 11, 200, 11)
         self.treble_clef_label.setScaledContents(True)
@@ -116,10 +140,34 @@ class MainWindow(QWidget):
         self.threadpool = QThreadPool()
 
         self.midi_worker = MidiWorker()
-        self.midi_worker.signal.note_recieved.connect(self.onLineNumberReceived)
+        self.midi_worker.signal.note_recieved.connect(self.checkIfCorrect)
+
+        self.note_generator = GenerateNoteWorker('C', "easy")
+        self.note_generator.signal.note_generated.connect(self.setTargetLineNumber)
+        
         self.threadpool.start(self.midi_worker)
+        self.threadpool.start(self.note_generator)
     
-    def onLineNumberReceived(self, line_number):
+    def checkIfCorrect(self, line_number):
+        print("target", self.target_line_number, "acutal", line_number)
+
+        if (line_number == self.target_line_number):
+            self.quarter_note_label.changeColor("green")
+            self.note_generator.resetNote()
+        else:
+            self.quarter_note_label.changeColor("red")
+            timer = QTimer()
+            timer.singleShot(500, self.quarter_note_label.changeColor)
+      
+
+            
+            
+    def setTargetLineNumber(self, line_number):
+        self.quarter_note_label.changeColor("black")
+        self.target_line_number = line_number
+        self.createNoteAtLineNumber(line_number)
+
+    def createNoteAtLineNumber(self, line_number):
         BOTTOM_OF_STAFF = 224
         BOTTOM_OF_STAFF_LEDGER = 230
         BOTTOM_OF_STAFF_UPSIDE = 378
@@ -147,7 +195,6 @@ class MainWindow(QWidget):
         elif (line_number < 0):
             y_pos = BOTTOM_OF_STAFF_LEDGER - line_number*LEDGER_LINE_WIDTH
       
-        
         self.quarter_note_label.move(170, y_pos)
 
 if __name__ == "__main__":
