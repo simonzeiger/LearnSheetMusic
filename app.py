@@ -35,6 +35,9 @@ class QuarterNote(QLabel):
     is_curr_pix_normal = True
 
     def __init__(self, parent):
+        self.ledger_lines = self.initLedgerLines(parent)  
+        self.hideLedgerLines()
+        
         super(QuarterNote, self).__init__(parent)
         self.pix = QPixmap('./quarter_note.png').scaledToHeight(214)
         self.red_pix = QPixmap('./quarter_note_red.png').scaledToHeight(214)
@@ -47,8 +50,7 @@ class QuarterNote(QLabel):
         self.upside_red_pix = QPixmap('./quarter_note_upside_red.png').scaledToHeight(214)
         self.upside_green_pix = QPixmap('./quarter_note_upside_green.png').scaledToHeight(214)
 
-        self.ledger_lines = self.initLedgerLines(parent)  
-        self.hideLedgerLines()
+
     
     
     def changeColor(self, color="black"):
@@ -136,17 +138,22 @@ class MainWindow(QWidget):
         layout.setContentsMargins(200, 11, 200, 11)
         self.treble_clef_label.setScaledContents(True)
         self.setLayout(layout)
+        
+        self.target_line_number = -1000
 
         self.threadpool = QThreadPool()
 
         self.midi_worker = MidiWorker()
         self.midi_worker.signal.note_recieved.connect(self.checkIfCorrect)
 
-        self.note_generator = GenerateNoteWorker('C', "easy")
+        self.note_generator = GenerateNoteWorker('C', "medium")
         self.note_generator.signal.note_generated.connect(self.setTargetLineNumber)
         
         self.threadpool.start(self.midi_worker)
         self.threadpool.start(self.note_generator)
+
+        for synth in self.midi_worker.synths:
+            self.threadpool.start(synth)
     
     def checkIfCorrect(self, line_number):
         print("target", self.target_line_number, "acutal", line_number)

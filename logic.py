@@ -2,9 +2,8 @@ import mido
 import sys
 import time
 import random
-from PyQt5.QtWidgets import  QApplication, QLabel, QWidget, QPushButton, QVBoxLayout, QStackedLayout
-from PyQt5.QtGui import QPalette, QColor, QIcon, QPixmap
-from PyQt5.QtCore import QObject, QThreadPool, QRunnable, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, QRunnable, Qt, pyqtSignal, pyqtSlot
+from synth import MidiSynth
 
 NOT_IN_SCALE = -10000
 
@@ -114,6 +113,9 @@ class GenerateNoteWorker(QRunnable):
             if (self.difficulty == "easy"):
                 min_note = 64
                 max_note = 77
+            if (self.difficulty == "medium"):
+                min_note = 55
+                max_note = 86
 
         generated_note = None
         while(generated_note == None or generated_note == self.prev_note or note_number_in_scale_from_semitones(generated_note) == NOT_IN_SCALE):
@@ -140,10 +142,24 @@ class MidiWorker(QRunnable):
         self.signal = NoteSignal()
         self.key = 'C'
         self.firstTime = True
+        self.synths = [MidiSynth(), MidiSynth(), MidiSynth(), MidiSynth(), MidiSynth(), MidiSynth(), MidiSynth(), MidiSynth()]
+        
 
     def update_scale(self, key):
         self.key = key
-            
+    
+    def playNoteOnASynth(self, note):
+        for synth in self.synths:
+            if (synth.curr_note == None):
+                synth.playNote(note)
+                return
+        self.synths[0].playNote(note)
+    
+    def stopNoteOnASynth(self, note):
+        for synth in self.synths:
+            if (synth.curr_note == note):
+                synth.stopPlay()
+
 
     @pyqtSlot()
     def run(self):
@@ -155,8 +171,16 @@ class MidiWorker(QRunnable):
                     # This throws exception if a non standard midi note is played.
                     self.signal.note_recieved.emit(
                         line_number_from_note_treble(convert_msg_to_note_num(msg), self.key))
+                    self.playNoteOnASynth(convert_msg_to_note_num(msg))
                 except:
                     pass
-            time.sleep(.1)
+                    
+                try: 
+                    _ = str(msg).index("note_off")
+                    self.stopNoteOnASynth(convert_msg_to_note_num(msg))
+                except:
+                    pass
+
+            time.sleep(.05)
 
 
